@@ -1,0 +1,17 @@
+{
+  "name": "misiom-ohub-english",
+  "version": "1.0.10-en.1",
+  "private": true,
+  "description": "English translation kit for Misiom's O HUB headset driver app (version 1.0.10)",
+  "scripts": {
+    "build": "bash build.sh",
+    "screenshots": "node tools/shots.js out/work/patched/public/dist out/screenshots"
+  },
+  "devDependencies": {
+    "@babel/generator": "7.29.13",
+    "@babel/parser": "7.29.13",
+    "@babel/traverse": "7.29.13",
+    "@babel/types": "7.29.11",
+    "@electron/asar": "3.2.17"
+  }
+}
