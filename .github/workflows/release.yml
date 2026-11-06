@@ -1,0 +1,60 @@
+name: Build and release
+
+# Run from the Actions tab ("Run workflow"). Downloads Misiom's official O HUB 1.0.10 installer,
+# verifies it, builds the English kit (.zip) and the portable .exe, and publishes them as a release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        default: v1.0.10-en.1
+      installer_url:
+        description: Official O HUB 1.0.10 installer URL (the 下载客户端 button on misiom.cn/download)
+        required: true
+        default: "https://download.s21i.co99.net/32564948/0/0/ABUIABBLGAAg7NSy1gYouI64nwU.exe?f=O%20HUB-win-1.0.10-x64.exe&v=1791797889"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install 7-Zip and NSIS
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full nsis
+
+      - name: Download and verify the official installer
+        env:
+          URL: ${{ inputs.installer_url }}
+        run: |
+          curl -fL --retry 5 --retry-delay 15 -o installer.exe "$URL"
+          echo "ed5d4743942983101200a20076177784c0a34e621a0b70ee80b6ad65da486251  installer.exe" | sha256sum -c -
+
+      - run: npm ci
+
+      - name: Build English kit (.zip)
+        run: ./build.sh installer.exe
+
+      - name: Build portable .exe
+        run: ./portable.sh installer.exe
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          cd out
+          sha256sum OHUB-English-1.0.10.zip OHUB-English-Portable-1.0.10.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "$TAG" \
+            OHUB-English-1.0.10.zip OHUB-English-Portable-1.0.10.exe SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --title "O HUB 1.0.10 in English" \
+            --notes-file ../.github/release-notes.md
