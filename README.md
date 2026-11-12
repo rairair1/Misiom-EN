@@ -33,6 +33,11 @@ delete that folder.
 If it still opens in Chinese, click the gear icon → 常规设置 (General Settings) → 语言切换 (Language) → English.
 To undo, run `Restore-Chinese.bat` or reinstall O HUB.
 
+## Linux
+
+O HUB doesn't run on Linux, and the headset doesn't need it for sound or mic there. If the mic isn't working, see
+[`linux/`](linux/README.md) for a script that finds the problem and fixes it.
+
 ## Build it
 
 Releases are built by GitHub Actions: **Actions → Build and release → Run workflow**. It downloads the official

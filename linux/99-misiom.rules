@@ -1,0 +1,4 @@
+# Keep Misiom headsets / 2.4G dongles awake. USB autosuspend can make some wireless
+# dongles drop the microphone after a few minutes of silence.
+# Install:  sudo cp 99-misiom.rules /etc/udev/rules.d/ && sudo udevadm control --reload && replug the dongle
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="3206|3a95|39a5", TEST=="power/control", ATTR{power/control}="on"
