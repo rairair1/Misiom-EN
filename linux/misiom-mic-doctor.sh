@@ -199,10 +199,11 @@ if [ -n "$SRC" ] && have parec; then
     elif [ $PLAY = 1 ]; then info "The dongle only sends the mic while audio is playing. Paste this output and it can be worked around."
     else
       info "Nothing gets sound from the mic, even straight from the hardware, so it isn't a Linux setting."
-      info "1. Press the headset's mic-mute button (or move the boom) and listen for the mic on/off announcement,"
+      info "1. If the mic is detachable, unplug it and push it back in firmly: a half-seated mic sends pure silence."
+      info "2. Press the headset's mic-mute button (or move the boom) and listen for the mic on/off announcement,"
       info "   then run this script again."
-      info "2. Make sure the headset is in 2.4G mode (not Bluetooth) and connected to this dongle."
-      info "3. If you can, check whether the mic works on Windows or another computer."
+      info "3. Make sure the headset is in 2.4G mode (not Bluetooth) and connected to this dongle."
+      info "4. If you can, check whether the mic works on Windows or another computer."
     fi
   fi
 fi
