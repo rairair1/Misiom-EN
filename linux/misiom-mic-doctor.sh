@@ -141,7 +141,7 @@ if [ -n "$SERVER" ] && [ -n "$CARDS" ]; then
       [ $FIX = 1 ] && pactl set-default-source "$SRC" && did "headset mic set as default input"
     fi
     SINFO=$(LC_ALL=C pactl list sources | awk -v s="$SRC" '/^Source #/ {p=0} $0 == "\tName: " s {p=1} p')
-    if printf '%s\n' "$SINFO" | grep -q '^\tMute: yes'; then
+    if printf '%s\n' "$SINFO" | awk '/^\tMute: yes/ {f = 1} END {exit !f}'; then
       bad "Headset mic is muted in the sound server"
       [ $FIX = 1 ] && pactl set-source-mute "$SRC" 0 && did "mic unmuted"
     else ok "Not muted in the sound server"; fi
@@ -156,16 +156,54 @@ if [ -n "$SERVER" ] && [ -n "$CARDS" ]; then
   fi
 fi
 
-# ---------------------------------------------------------------- live level test
+# ---------------------------------------------------------------- live level tests
+# raw s16le mono on stdin -> "<peak 0-32767> <non-zero samples> <samples>"
+peak_stats() { od -An -v -t d2 | awk '{for (i = 1; i <= NF; i++) {n++; v = $i < 0 ? -$i : $i; if (v) nz++; if (v > m) m = v}}
+  END {printf "%d %d %d", m, nz, n}'; }
+# $1 label, $2 stats; returns 0 if sound was heard
+judge() {
+  local label=$1 peak nz n pct; read -r peak nz n <<< "$2"; pct=$(( ${peak:-0} * 100 / 32768 ))
+  if [ "${n:-0}" = 0 ]; then bad "$label: no audio data at all (the recording didn't start)"; return 1
+  elif [ "${nz:-0}" = 0 ]; then bad "$label: digital silence (all $n samples are exactly 0)"; return 1
+  elif [ "$pct" -lt 5 ]; then bad "$label: very quiet (peak $peak/32767 = ${pct}%, $nz of $n samples non-zero)"; return 1
+  else ok "$label: picking up sound (peak ${pct}%)"; return 0; fi
+}
 if [ -n "$SRC" ] && have parec; then
-  say "Level test: talk into the mic for 3 seconds..."
-  PEAK=$(timeout 3 parec -d "$SRC" --raw --format=s16le --channels=1 --rate=16000 2>/dev/null \
-    | od -An -v -t d2 | awk '{for (i = 1; i <= NF; i++) {v = $i < 0 ? -$i : $i; if (v > m) m = v}} END {printf "%d", m * 100 / 32768}')
-  if [ "${PEAK:-0}" -ge 5 ]; then ok "Mic is picking up sound (peak ${PEAK}%)"
-  else
-    bad "Silence from the mic (peak ${PEAK:-0}%)"
-    info "If everything above is OK, the mute is probably on the headset itself:"
-    info "press the mic-mute button or lower the boom (the headset announces mic on/off)."
+  say "Level test: keep talking into the mic until the tests finish..."
+  if ! judge "Normal recording" "$(timeout 3 parec -d "$SRC" --raw --format=s16le --channels=1 --rate=16000 2>/dev/null | peak_stats)"; then
+    PLAY=0; DIRECT=0
+    # Some 2.4G dongles only send the mic while audio is also playing to the headset.
+    SINK=$(LC_ALL=C pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -F "alsa_output.${SRC#alsa_input.}" | head -1)
+    [ -z "$SINK" ] && SINK=$(LC_ALL=C pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -F "alsa_output.$(printf '%s' "${SRC#alsa_input.}" | sed 's/\.[^.]*$//')" | head -1)
+    if [ -n "$SINK" ] && have pacat; then
+      pacat -d "$SINK" --raw --format=s16le --channels=2 --rate=48000 < /dev/zero 2>/dev/null & PACAT=$!
+      sleep 1
+      judge "While (silent) audio plays to the headset" \
+        "$(timeout 3 parec -d "$SRC" --raw --format=s16le --channels=1 --rate=16000 2>/dev/null | peak_stats)" && PLAY=1
+      kill "$PACAT" 2>/dev/null; wait "$PACAT" 2>/dev/null
+    fi
+    # Straight from the hardware, bypassing PipeWire/PulseAudio.
+    if [ -n "$CARD" ] && have arecord; then
+      DEV=$(LC_ALL=C arecord -l 2>/dev/null | sed -n "s/^card $CARD: .*, device \([0-9]*\):.*/\1/p" | head -1)
+      info "Capture formats the headset reports:"
+      sed -n '/^Capture:/,/^$/p' "$ASOUND/card$CARD/stream0" 2>/dev/null | sed 's/^/         /' | head -14
+      info "Waiting for the sound server to release the mic..."; sleep 6
+      ERRF=$(mktemp)
+      STATS=$(timeout 5 arecord -q -D "plughw:$CARD,${DEV:-0}" -f S16_LE -c 1 -r 16000 -d 3 -t raw 2>"$ERRF" | peak_stats)
+      if [ -s "$ERRF" ]; then info "arecord: $(head -2 "$ERRF" | tr '\n' ' ')"; fi
+      rm -f "$ERRF"
+      judge "Direct from the hardware (no PipeWire)" "$STATS" && DIRECT=1
+    fi
+    say "What this means"
+    if [ $DIRECT = 1 ]; then info "The hardware works but PipeWire/PulseAudio gets silence: a sound-server problem. Paste this output."
+    elif [ $PLAY = 1 ]; then info "The dongle only sends the mic while audio is playing. Paste this output and it can be worked around."
+    else
+      info "Nothing gets sound from the mic, even straight from the hardware, so it isn't a Linux setting."
+      info "1. Press the headset's mic-mute button (or move the boom) and listen for the mic on/off announcement,"
+      info "   then run this script again."
+      info "2. Make sure the headset is in 2.4G mode (not Bluetooth) and connected to this dongle."
+      info "3. If you can, check whether the mic works on Windows or another computer."
+    fi
   fi
 fi
 
